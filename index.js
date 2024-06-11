@@ -5,6 +5,8 @@ const mysql = require('mysql');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.use(bodyParser.json());
+
 app.use(bodyParser.urlencoded({ extended: false }));
 
 // Database connection details
@@ -216,6 +218,7 @@ app.post('/ussd', (req, res) => {
             `END Ibyo muhisemo Ntibikunze. Ongera ugerageze.`;
     }
 
+    res.set("Content-Type", "text/plain");
     res.send(response);
 });
 
