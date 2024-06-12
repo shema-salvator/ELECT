@@ -5,16 +5,14 @@ const mysql = require('mysql');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(bodyParser.json());
-
 app.use(bodyParser.urlencoded({ extended: false }));
 
 // Database connection details
 const dbConfig = {
-   host: 'bkt5qan0til2lhvgxii0-mysql.services.clever-cloud.com',
-    user: 'uznfuopmmsz0ammm',
-    password: 'nI5GbIDrpofIYKolFfGB',
-    database: 'bkt5qan0til2lhvgxii0'
+    host: 'brxufe3uzrnzqukz7ejq-mysql.services.clever-cloud.com',
+    user: 'udfs7y1vguytqjsq',
+    password: 'vbiYZ2jqolgX18NuPwgJ', 
+    database: 'brxufe3uzrnzqukz7ejq'
 };
 
 let db;
@@ -23,23 +21,7 @@ let db;
 function handleDisconnect() {
     db = mysql.createConnection(dbConfig);
 
-    db.connect(err => {
-        if (err) {
-            console.error('Error connecting to database:', err.stack);
-            setTimeout(handleDisconnect, 2000); // Reconnect after 2 seconds
-        } else {
-            console.log('Connected to database.');
-        }
-    });
-
-    db.on('error', err => {
-        console.error('Database error:', err.stack);
-        if (err.code === 'PROTOCOL_CONNECTION_LOST') {
-            handleDisconnect(); // Reconnect on connection loss
-        } else {
-            throw err;
-        }
-    });
+    
 }
 
 // Initial connection
@@ -64,7 +46,18 @@ function getCandidates(callback) {
     });
 }
 
-
+// Check if the phone number belongs to an admin
+function isAdmin(phoneNumber, callback) {
+    const query = 'SELECT * FROM admin WHERE phone_number = ?';
+    db.query(query, [phoneNumber], (err, results) => {
+        if (err) {
+            console.error('Error checking admin status:', err.stack);
+            callback(false);
+        } else {
+            callback(results.length > 0);
+        }
+    });
+}
 
 app.post('/ussd', (req, res) => {
     let response = '';
@@ -78,9 +71,9 @@ app.post('/ussd', (req, res) => {
     // Determine next action based on user input
     if (userInput.length === 1 && userInput[0] === '') {
         // First level menu: Language selection
-        response = `CON Welcome to NEC Election System 2024\n`;
-        response += `1. English\n`;
-        response += `2. Kinyarwanda`;
+        response = `CON Welcome to Voting System\n`;
+        response += `1. Icyongereza\n`;
+        response += `2. Ikinyarwanda`;
     } else if (userInput.length === 1 && userInput[0] !== '') {
         // Validate language selection
         if (userInput[0] === '1' || userInput[0] === '2') {
@@ -88,17 +81,32 @@ app.post('/ussd', (req, res) => {
             userLanguages[phoneNumber] = userInput[0] === '1' ? 'en' : 'rw';
             response = userLanguages[phoneNumber] === 'en' ? 
                 `CON Please enter your name:` : 
-                `CON Andika Amazina yawe:`;
+                `CON Uzuza umwirondoro: \n Amazina yawe:`;
         } else {
             // Invalid language selection
             response = `END Invalid selection. Please try again.` + 
-                       `\nIbyo muhisemo Ntibikunze. Ongera Ugerageze.`;
+                       `\nIbyo muhisemo Ntago aribyo. Ongera ugerageze.`;
         }
     } else if (userInput.length === 2) {
         // Save user's name
         userNames[phoneNumber] = userInput[1];
 
-       
+        // Check if the user is an admin
+        isAdmin(phoneNumber, isAdmin => {
+            if (isAdmin) {
+                // Admin menu
+                response = userLanguages[phoneNumber] === 'en' ? 
+                    `CON Hello ${userNames[phoneNumber]}, choose an option:\n1. View Votes\n2. View Information` : 
+                    `CON Muraho ${userNames[phoneNumber]}, Hitamo:\n1. Reba amajwi\n2. Reba amakuru`;
+            } else {
+                // Regular user menu
+                response = userLanguages[phoneNumber] === 'en' ? 
+                    `CON Hello ${userNames[phoneNumber]}, choose an option:\n1. Vote Candidate\n2. View Information` : 
+                    `CON Muraho ${userNames[phoneNumber]}, Hitamo:\n1. Tora umukandida\n2. Reba amakuru`;
+            }
+            res.send(response);
+        });
+        return; // Return to wait for async callback
     } else if (userInput.length === 3) {
         if (userInput[2] === '1' || userInput[2] === '2') {
             isAdmin(phoneNumber, isAdmin => {
@@ -170,7 +178,7 @@ app.post('/ussd', (req, res) => {
             // Invalid main menu selection
             response = userLanguages[phoneNumber] === 'en' ? 
                 `END Invalid selection. Please try again.` : 
-                `END Ibyo muhisemo Ntibikunze. Ongera ugerageze.`;
+                `END Ibyo muhisemo Ntago aribyo. Ongera ugerageze.`;
         }
     } else if (userInput.length === 4) {
         // Fourth level menu: Voting confirmation
@@ -182,7 +190,7 @@ app.post('/ussd', (req, res) => {
                 voters.add(phoneNumber); // Mark this phone number as having voted
                 response = userLanguages[phoneNumber] === 'en' ? 
                     `END Thank you for voting ${selectedCandidate}!` : 
-                    `END Murakoze gutora, Mutoye Umukandida ${selectedCandidate}!`;
+                    `END Murakoze gutora, Mutoye ${selectedCandidate}!`;
 
                 // Insert voting record into the database
                 const timestamp = new Date();
@@ -206,7 +214,7 @@ app.post('/ussd', (req, res) => {
             } else {
                 response = userLanguages[phoneNumber] === 'en' ? 
                     `END Invalid selection. Please try again.` : 
-                    `END Ibyo muhisemo Ntibikunze. Ongera ugerageze.`;
+                    `END Ibyo muhisemo Ntago aribyo. Ongera ugerageze.`;
                 res.send(response);
             }
         });
@@ -215,10 +223,9 @@ app.post('/ussd', (req, res) => {
         // Catch-all for any other invalid input
         response = userLanguages[phoneNumber] === 'en' ? 
             `END Invalid selection. Please try again.` : 
-            `END Ibyo muhisemo Ntibikunze. Ongera ugerageze.`;
+            `END Ibyo muhisemo Ntago aribyo. Ongera ugerageze.`;
     }
 
-    res.set("Content-Type", "text/plain");
     res.send(response);
 });
 
